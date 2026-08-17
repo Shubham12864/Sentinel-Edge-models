@@ -161,11 +161,3 @@ It is not a complete final product by itself.
 
 This project is shared for learning and model experimentation. Add your own license if you plan to publish it publicly.
 
-## Future path
-
-The next steps can be:
-
-- add a small API wrapper around the model
-- add camera ingest for Tier 1
-- add a simple dashboard for Tier 3
-- deploy the model in a container or cloud environment
