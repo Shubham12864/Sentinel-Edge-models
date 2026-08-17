@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+
+# Local env
+.env
+.env.*
+
+# Model files
+*.pt
+*.onnx
+*.bin
+
+# Data outputs
+face_crops/
+data/face_crops/
+data/*.faiss
+*.faiss
+*.json
+
+# Notebook outputs
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
