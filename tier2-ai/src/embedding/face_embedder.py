@@ -29,11 +29,13 @@ class FaceEmbedder:
                 return
             try:
                 import insightface
+                from insightface.utils.face_align import norm_crop  # noqa: F401
             except ImportError as exc:
                 raise RuntimeError("Face embedding requires insightface and onnxruntime.") from exc
             model = insightface.app.FaceAnalysis(name="buffalo_l", allowed_modules=["detection", "recognition"])
             model.prepare(ctx_id=self.ctx_id)
             self.model = model
+            self._norm_crop = norm_crop
 
     @property
     def _recognizer(self):
@@ -54,11 +56,25 @@ class FaceEmbedder:
         return xi1, yi1, xi2, yi2
 
     def _aligned_input(self, frame: np.ndarray, bbox) -> np.ndarray | None:
+        """Margin-expand the external bbox, then landmark-align if a face is found.
+
+        Enrollment and runtime share this exact path, so gallery and query
+        features are computed from identically aligned pixels.  When SCRFD
+        finds no face in the crop (extreme pose/blur), fall back to the plain
+        margin-expanded resize rather than dropping the observation.
+        """
         region = self._expand_bbox(bbox, frame.shape[1], frame.shape[0])
         if region is None:
             return None
         crop = frame[region[1]:region[3], region[0]:region[2]]
+        self._load()
         height, width = self._input_size()
+        try:
+            bboxes, keypoints = self.model.models["detection"].detect(crop, max_num=1)
+            if keypoints is not None and len(keypoints) > 0:
+                return self._norm_crop(crop, keypoints[0], image_size=width)
+        except Exception:
+            pass  # alignment is best-effort; never fail an embed because of it
         return cv2.resize(crop, (width, height))
 
     @staticmethod
@@ -80,34 +96,39 @@ class FaceEmbedder:
         """Recognition-only embedding of an already-cropped face image."""
         if face_crop is None or getattr(face_crop, "size", 0) == 0:
             return None
+        self._load()
         height, width = self._input_size()
-        aligned = cv2.resize(face_crop, (width, height))
-        return self._normalise(self._recognizer.get_feat(aligned))
+        try:
+            bboxes, keypoints = self.model.models["detection"].detect(face_crop, max_num=1)
+            if keypoints is not None and len(keypoints) > 0:
+                return self._normalise(self._recognizer.get_feat(
+                    self._norm_crop(face_crop, keypoints[0], image_size=width)))
+        except Exception:
+            pass
+        return self._normalise(self._recognizer.get_feat(cv2.resize(face_crop, (width, height))))
 
     def embed_image(self, image: np.ndarray | None) -> np.ndarray | None:
-        """Offline enrollment: exactly one SCRFD pass, then the same preprocessing."""
+        """Offline enrollment: exactly one SCRFD pass, then aligned recognition."""
         if image is None or getattr(image, "size", 0) == 0:
             return None
         self._load()
-        bboxes, _ = self.model.models["detection"].detect(image, max_num=1)
+        bboxes, keypoints = self.model.models["detection"].detect(image, max_num=1)
         if bboxes is None or len(bboxes) == 0:
             return None
-        return self.embed_from_bbox(image, bboxes[0][:4])
+        if keypoints is not None and len(keypoints) > 0:
+            height, width = self._input_size()
+            return self._normalise(self._recognizer.get_feat(
+                self._norm_crop(image, keypoints[0], image_size=width)))
+        region = self._expand_bbox(bboxes[0][:4], image.shape[1], image.shape[0])
+        if region is None:
+            return None
+        crop = image[region[1]:region[3], region[0]:region[2]]
+        height, width = self._input_size()
+        return self._normalise(self._recognizer.get_feat(cv2.resize(crop, (width, height))))
 
     def get_embedding(self, face_crop_or_image: np.ndarray | None) -> np.ndarray | None:
-        """Backward-compatible entry point.
-
-        Full images (enrollment) go through single-pass detection; tight crops
-        are recognised directly.  New code should call embed_from_bbox,
-        embed_crop or embed_image explicitly.
-        """
-        if face_crop_or_image is None or getattr(face_crop_or_image, "size", 0) == 0:
-            return None
-        self._load()
-        bboxes, _ = self.model.models["detection"].detect(face_crop_or_image, max_num=1)
-        if bboxes is None or len(bboxes) == 0:
-            return None
-        return self.embed_from_bbox(face_crop_or_image, bboxes[0][:4])
+        """Backward-compatible entry point (see embed_image)."""
+        return self.embed_image(face_crop_or_image)
 
     def embed(self, image: np.ndarray | None) -> list[float]:
         result = self.embed_image(image)

@@ -35,6 +35,24 @@ class IdentitySearch:
             scores, ids = self.index.search(self._normalise(embedding).reshape(1, -1), 1); pid = int(ids[0][0])
             if pid == -1: return None, None, 0.0
             item = self.id_to_name[pid]; return item["name"], item["identity_id"], float(scores[0][0])
+    def search_with_margin(self, embedding, k: int = 2):
+        """Top match plus runner-up structure for ambiguity-aware verification.
+
+        Returns (name, identity_id, score, runner_up_score, margin).  When the
+        gallery holds fewer than k identities the runner-up is -1.0 and the
+        margin equals the score itself.
+        """
+        with self._lock:
+            self._ensure_index()
+            if self.index.ntotal == 0: return None, None, 0.0, -1.0, 0.0
+            k = max(1, min(int(k), self.index.ntotal))
+            scores, ids = self.index.search(self._normalise(embedding).reshape(1, -1), k)
+            pid = int(ids[0][0])
+            if pid == -1: return None, None, 0.0, -1.0, 0.0
+            item = self.id_to_name[pid]
+            top = float(scores[0][0])
+            runner = float(scores[0][1]) if k > 1 and ids[0][1] != -1 else -1.0
+            return item["name"], item["identity_id"], top, runner, top - runner
     def save(self, path: str | Path) -> None:
         with self._lock:
             self._ensure_index(); path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
