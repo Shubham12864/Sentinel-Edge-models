@@ -1,183 +1,158 @@
-# Sentinel Edge Model
+# 🛡 Sentinel Edge — Multi-Camera AI Surveillance Grid
 
-This repository is the Tier 2 AI model and demo code for a face-recognition surveillance pipeline.
+Sentinel-Edge is an edge-native, multi-camera surveillance pipeline. It detects and tracks people across camera feeds, verifies identity against a private face database, predicts the next likely camera with an ETA — and presents everything in a live operator console.
 
-It is not a full end-user web app. It is a model architecture and working local demo that shows how the system is designed to work in real deployment.
-
-## What this repository is
-
-This project takes a camera frame, detects faces, tracks them, extracts embeddings, compares them with known identities, and emits a result event.
-
-The flow is:
-
-- Tier 1: camera or source provides frames
-- Tier 2: this model pipeline processes frames
-- Tier 3: downstream app or dashboard consumes events
-
-This repo focuses on Tier 2.
-
-## Main idea
-
-The model works like this:
-
-1. A frame comes in from a camera
-2. YOLO detects faces
-3. ByteTrack keeps track of each face over time
-4. A face crop is extracted
-5. ArcFace creates a 512-dimensional embedding
-6. FAISS searches the known identity database
-7. The system decides whether the person is verified
-8. An event is returned with identity, score, camera, and timestamp
-
-## Folder structure
-
-```text
-Sentinel Edge models/
-├── yolo26n.pt
-├── README.md
-├── .gitignore
-├── tier2-ai/
-│   ├── README.md
-│   ├── requirements.txt
-│   ├── config/
-│   ├── data/
-│   ├── models/
-│   ├── notebooks/
-
-# Sentinel Edge
-
-Sentinel Edge is a local, end-to-end edge vision system for camera ingestion, face detection and tracking, identity matching, trajectory prediction, and operator monitoring.
-
-The repository combines three runtime tiers behind one launcher:
-
-```text
-Camera or video source
-        |
-Tier 1: CameraSource -> FramePacket
-        |
-Tier 2: YOLO + ByteTrack + ArcFace + FAISS -> UnifiedEvent
-        |
-Tier 3: Command HQ API + WebSocket + operator console
+```
+SEE  →  IDENTIFY  →  PREDICT  →  ALERT
+detect every frame   ArcFace + FAISS   Markov graph    live operator
+                     512-D identity    next camera     console + events
+                                       + ETA
 ```
 
-## Features
+> **Track architecture (frozen contracts)**
+> `Tier 1` camera gateway → `FramePacket` → `Tier 2` AI vision & prediction → `UnifiedEvent` → `Tier 3` Command HQ
+> Each tier is independently testable; the only coupling is the two data contracts.
 
-- OpenCV camera, RTSP, device-index, and recorded-file sources
-- Reconnect handling and FPS-bounded capture
-- YOLO face detection with Ultralytics ByteTrack tracking
-- ArcFace embeddings and FAISS identity search
-- Quality filtering, verification, saved face crops, and Markov next-camera prediction
-- Persistent identity gallery with multi-image enrollment and removal
-- Camera registry with explicit Connect and Disconnect controls
-- FastAPI Command HQ with live MJPEG feeds, event history, WebSocket updates, and a browser console
-- Runtime tests for ingestion, pipeline hardening, limits, enrollment, and server behavior
+---
 
-## Repository layout
+## ✨ Highlights
 
-```text
-run_sentinel.py       Start Tier 1 + Tier 2 + Tier 3 together
-tier1-ingest/         Camera sources, registry, and ingestion manager
-tier2-ai/              AI pipeline, models, identity data, scripts, and tests
-tier3-hq/              FastAPI server, persistent gallery, and operator console
-runs/                 Local recorded demo footage and inference output
-```
+| | |
+|---|---|
+| 🎥 **Any source** | RTSP / ONVIF IP cams, USB webcams, recorded footage — one interface |
+| 🔌 **Self-healing ingest** | auto-reconnect, hot-plug, bounded FPS, latest-frame processing (no backlog ever builds) |
+| 🎯 **Custom detector** | YOLO26n fine-tuned on WIDER FACE — among the first YOLO26-face models ([weights](https://huggingface.co/Shubham12864/YOLO26n-face)) |
+| 🧠 **Recognition that survives the real world** | landmark-aligned ArcFace embeddings, FAISS search, hysteresis verification |
+| 🔮 **Trajectory prediction** | online Markov transition graph learns *your* site: next camera + ETA + probability, persisted across restarts |
+| 🖱 **Zero-code operations** | add cameras, connect/disconnect, enroll identities by drag-and-drop — all from the browser |
+| 🔐 **Adversarially hardened** | path-traversal, forged-timestamp TTL-wipe, thread-bomb and gallery-poisoning regressions are tested |
+| ⚡ **Edge-first privacy** | video never leaves the node; only structured events flow to the console |
 
-## Setup
+---
 
-Use Python 3.10 or newer. Create and activate a virtual environment from the repository root, then install the Tier 2 dependencies:
+## 🚀 Quick Start
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r tier2-ai\requirements.txt
-```
+```bash
+# 1 · clone
+git clone https://github.com/Shubham12864/Sentinel-Edge-models.git
+cd Sentinel-Edge-models
 
-The AI pipeline expects YOLO weights at:
+# 2 · install (Python 3.10+)
+python -m pip install -r tier2-ai/requirements.txt
 
-```text
-tier2-ai/models/yolo26n/yolo26 widerdataset.pt
-```
-
-The launcher can start without model loading by using `--no-ai`.
-
-## Start the system
-
-From the repository root:
-
-```powershell
+# 3 · run the whole grid
 python run_sentinel.py
+# → console opens at http://127.0.0.1:8000
 ```
 
-Open http://localhost:8000 for Command HQ. Cameras listed in [tier1-ingest/cameras.yaml](tier1-ingest/cameras.yaml) are loaded into the registry but are deliberately not connected automatically. Connect them from the console.
+Useful variants:
 
-Useful launcher options:
-
-```text
---host HOST             Bind address (default: 127.0.0.1)
---port PORT             HTTP port (default: 8000)
---file PATH             Add and connect one recorded-file camera
---camera-id ID          ID for --file (default: CAM_99)
---fps FPS               Capture rate for --file (default: 4)
---no-ai                 Run ingestion and Command HQ without loading AI models
+```bash
+python run_sentinel.py --no-ai                         # ingest + console only
+python run_sentinel.py --file clip.mp4 --camera-id CAM_99  # demo with a video file
 ```
 
-For example:
+### First 3 minutes
 
-```powershell
-python run_sentinel.py --file runs\detect\predict-4\1.avi --camera-id CAM_99 --fps 4
+1. **Cameras** tab → *Save to mapping* (`CAM_03`, an RTSP URL / webcam index / any `.mp4`) → press **Connect**
+2. **Identities** tab → drop 2–6 clear face photos → name → **Enroll** *(recognition updates without a restart)*
+3. **Live** tab → watch verified identities, event feed, and predictions
+
+---
+
+## 🏗 Architecture
+
+```
+┌────────────────────────── TIER 1 · INGEST ──────────────────────────┐
+│  CameraSource threads (RTSP / USB / file)                           │
+│  reconnect · hot-plug · FPS bounding · latest-frame semantics       │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               ▼  FramePacket {camera_id, timestamp, frame, metadata}
+┌────────────────────────── TIER 2 · AI CORE ─────────────────────────┐
+│  quality gate → YOLO26n-Face → ByteTrack → ArcFace(buffalo_l)       │
+│  → FAISS identity search → verifier (hysteresis+margin)             │
+│  → Markov transition predictor (persisted, Laplace-smoothed)        │
+│  per-camera workers · bounded thread pool · gallery hot-reload      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               ▼  UnifiedEvent
+┌────────────────────────── TIER 3 · COMMAND HQ ──────────────────────┐
+│  FastAPI + WebSocket fan-out · MJPEG live grid                      │
+│  one-click enrollment · removable gallery · camera mapping CRUD     │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-## Identity enrollment
+### Repository layout
 
-For command-line enrollment, place one or more images per identity in:
-
-```text
-tier2-ai/data/known_identities/<identity-name>/
+```
+├── run_sentinel.py            # single-command launcher for all three tiers
+├── tier1-ingest/              # camera gateway and camera registry
+├── tier2-ai/                  # AI core, models, scripts, and tests
+│   ├── src/
+│   │   ├── detection/         # YOLO26n-face + ByteTrack
+│   │   ├── embedding/         # ArcFace embeddings
+│   │   ├── identity_search/   # FAISS gallery and hot reload
+│   │   ├── quality_gate/      # blur/size filtering
+│   │   ├── runtime/           # device plan and bounded workers
+│   │   ├── trajectory/        # transition graph and Markov predictor
+│   │   └── verification/      # threshold and margin verification
+│   ├── scripts/               # enrollment and threshold calibration
+│   └── tests/                 # unit and adversarial regression tests
+└── tier3-hq/                  # FastAPI server, console, and tests
 ```
 
-Then run:
+---
 
-```powershell
-python tier2-ai\scripts\enroll_identities.py
+## 🧪 Testing & Verification
+
+```bash
+pytest tier1-ingest/test_camera_source.py tier3-hq/test_server.py tier2-ai/tests/ -q
 ```
 
-When Command HQ is running, identities can also be enrolled and removed from the console. The Tier 3 gallery is stored in `tier3-hq/data/gallery.json` and its exported FAISS index is stored in `tier3-hq/data/identity_index.faiss`.
+The tests cover:
 
-## Development and tests
+- `FramePacket` and `UnifiedEvent` contract conformance
+- malformed input, replayed packets, path traversal, forged timestamps, and gallery poisoning
+- concurrency, worker bounds, registry pruning, and multi-camera processing
+- device planning, face alignment, verifier logic, and FAISS search margins
+- API validation and clean 4xx responses for hostile payloads
 
-Run the automated tests from each tier directory so local imports resolve correctly:
+GPU is recommended for multi-camera live deployment. CPU is suitable for single-camera demos and development.
 
-```powershell
-pytest -q tier1-ingest
-pytest -q tier2-ai\tests
-pytest -q tier3-hq
-```
+---
 
-The interactive webcam demo is separate from the automated tests:
+## ⚙️ Configuration
 
-```powershell
-python tier2-ai\tests\demo.py
-```
+| What | Where | Notes |
+|---|---|---|
+| Camera mapping | `tier1-ingest/cameras.yaml` | managed by Command HQ; saved cameras are not auto-connected |
+| Tier-2 allowlist | `tier2-ai/config/cameras.yaml` | defense-in-depth camera ID validation |
+| Detector weights | `tier2-ai/models/yolo26n/yolo26 widerdataset.pt` | supplied YOLO model location |
+| Verification threshold | `MatchVerifier(threshold=…)` | calibrate with `scripts/calibrate_threshold.py` |
 
-The primary Tier 2 API is `UnifiedPipeline.process_frame_packet(packet)`. The bounded `Tier2Runtime` bridge consumes the resulting packets and forwards events to Command HQ.
+> **Biometrics stay local.** Face crops, uploaded enrollment images, identity vectors, and FAISS galleries are git-ignored and never leave the machine through this application.
 
-## HTTP and realtime surface
+---
 
-Command HQ provides:
+## 🗺 Roadmap
 
-- `/` - operator console
-- `/api/stats` - runtime statistics
-- `/api/events` - recent events
-- `/api/cameras` - camera registry and status
-- `/api/feed/{camera_id}` - MJPEG camera feed
-- `/api/identities` - identity gallery
-- `/ws/events` - live event WebSocket
+- [ ] Liveness defense between detection and embedding
+- [ ] Per-camera threshold adaptation and score calibration
+- [ ] RAG advisory panel behind the event feed
+- [ ] Map view with predicted-position markers
+- [ ] Docker Compose deployment
 
-Camera and identity mutations are exposed through the corresponding `/api/cameras/*` and `/api/identities/*` endpoints.
+---
 
-## Data and privacy
+## 👥 Team & Tracks
 
-Identity vectors, uploaded enrollment images, face crops, camera footage, and inference output are local operational data. Review [`.gitignore`](.gitignore) before adding or publishing generated biometric artifacts.
+Built as three independent tracks around two frozen contracts:
+
+| Track | Scope |
+|---|---|
+| **1 · Ingestion** | camera gateway, reconnection, and `FramePacket`s |
+| **2 · AI Vision & Prediction** | detect → identify → predict |
+| **3 · Orchestration & HQ** | event hub, console, and operator tooling |
+
 
 ```bash
 cd tier2-ai
