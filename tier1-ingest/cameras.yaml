@@ -1,0 +1,15 @@
+# Tier 1 camera registry.
+#
+# Each entry maps a Sentinel camera_id to an OpenCV-capturable source:
+#   network : rtsp://user:pass@host:554/stream      (IP/CCTV cameras via ONVIF/RTSP)
+#   device  : 0                                     (USB webcam index)
+#   file    : path to a recorded .avi/.mp4          (replays like a live feed)
+# fps bounds decode rate; Tier 2 keeps only each camera's latest frame.
+
+cameras:
+  CAM_01:
+    source: "../runs/detect/predict-4/1.avi"
+    fps: 3.0
+  CAM_02:
+    source: "../runs/detect/predict-4/1.avi"
+    fps: 3.0

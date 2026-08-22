@@ -71,4 +71,21 @@ class IdentitySearch:
             if not path.exists(): return False
             if not metadata_path.exists(): raise FileNotFoundError(f"FAISS metadata missing: {metadata_path}")
             import faiss
-            self.index = faiss.read_index(str(path)); data = json.loads(metadata_path.read_text(encoding="utf-8")); self.next_id = int(data["next_id"]); self.id_to_name = {int(k): v for k, v in data["identities"].items()}; return True
+            self.index = faiss.read_index(str(path)); data = json.loads(metadata_path.read_text(encoding="utf-8")); self.next_id = int(data["next_id"]); self.id_to_name = {int(k): v for k, v in data["identities"].items()}
+            try: self.loaded_mtime = path.stat().st_mtime
+            except OSError: self.loaded_mtime = None
+            return True
+    def reload_if_changed(self, path: str | Path) -> bool:
+        """Reload the index only when its file changed (operator re-enrollment).
+
+        Lets a long-running pipeline pick up gallery updates written by the
+        Command HQ without a restart.  Returns True when a reload happened.
+        """
+        path = Path(path)
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            return False
+        if getattr(self, "loaded_mtime", None) == mtime:
+            return False
+        return bool(self.load(path))

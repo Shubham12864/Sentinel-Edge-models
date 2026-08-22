@@ -59,6 +59,7 @@ class UnifiedPipeline:
         self.transition_graph_path = (
             Path(transition_graph_path) if transition_graph_path is not None
             else Path(__file__).resolve().parents[1] / "data" / "transition_graph.json")
+        self.gallery_watch_path: str | Path | None = None  # set by create_default
         self.track_states: dict[tuple[str, int], TrackState] = {}
         self._camera_detectors: dict[str, Any] = {}
         self._camera_last_seen: dict[str, float] = {}
@@ -111,10 +112,12 @@ class UnifiedPipeline:
             graph.load(graph_path)
         except Exception:
             pass  # missing/corrupt history just means a fresh graph
-        return cls(embedder=FaceEmbedder(ctx_id=effective_ctx), searcher=searcher,
-                   predictor=MarkovPredictor(graph), crop_dir=crop_dir,
-                   camera_allowlist=camera_allowlist, transition_graph_path=graph_path,
-                   detector_factory=lambda: FaceDetector(weights_path=weights_path, device=plan.torch_device), **kwargs)
+        pipeline = cls(embedder=FaceEmbedder(ctx_id=effective_ctx), searcher=searcher,
+                       predictor=MarkovPredictor(graph), crop_dir=crop_dir,
+                       camera_allowlist=camera_allowlist, transition_graph_path=graph_path,
+                       detector_factory=lambda: FaceDetector(weights_path=weights_path, device=plan.torch_device), **kwargs)
+        pipeline.gallery_watch_path = identity_index_path
+        return pipeline
 
     @staticmethod
     def _timestamp_epoch(timestamp: str) -> float:
@@ -181,10 +184,11 @@ class UnifiedPipeline:
         Hostile or malformed input is rejected, never raised: packets whose
         camera_id fails ``CAMERA_ID_RE`` (or an explicit allowlist), or whose
         timestamp cannot be parsed, are counted in ``metrics.rejected_packets``
-        and yield ``[]``.  TTL/throttle bookkeeping runs on
-        ``min(packet_time, wall_clock)`` so a forged future timestamp on one
-        camera cannot expire other cameras' tracks; the ``UnifiedEvent``
-        payload still carries Track 1's original timestamp verbatim.
+        and yield ``[]``.  All TTL/throttle/transition bookkeeping runs on the
+        local arrival clock -- packet-declared timestamps (past OR future) are
+        never trusted for state expiry, so one hostile or clock-skewed camera
+        cannot expire other cameras' tracks; the ``UnifiedEvent`` payload
+        still carries Track 1's original timestamp verbatim.
         """
         try:
             frame_packet = FramePacket.from_mapping(packet)
@@ -198,21 +202,31 @@ class UnifiedPipeline:
                 self.metrics.rejected_packets += 1
             return []
         try:
-            packet_epoch = self._timestamp_epoch(frame_packet.timestamp)
+            self._timestamp_epoch(frame_packet.timestamp)  # validate-only; payload passes through
         except ValueError:
             with self._lock:
                 self.metrics.rejected_packets += 1
             return []
-        now = min(packet_epoch, time.time())  # bookkeeping clock distrusts the future
+        now = time.time()  # arrival clock: the only clock trusted for state bookkeeping
+        if self.searcher is not None and getattr(self.searcher, "reload_if_changed", None) is not None:
+            try:
+                self.searcher.reload_if_changed(self.gallery_watch_path)
+            except Exception:
+                pass  # a bad gallery file must not stop the live path
         self._cleanup(now)
         detector = self._detector_for(frame_packet.camera_id)
         if detector is None:
             return []
         try:
             detections = detector.detect_and_track(frame_packet.frame)
-        except Exception:
+        except Exception as exc:
             with self._lock:
                 self.metrics.processing_errors += 1
+                try:
+                    detector.load_failures = getattr(detector, "load_failures", 0) + 1
+                    detector.last_error = f"{type(exc).__name__}: {exc}"
+                except Exception:
+                    pass
             return []
         camera_id = frame_packet.camera_id
         with self._lock:
@@ -268,7 +282,19 @@ class UnifiedPipeline:
         return events
 
     def health(self) -> dict[str, Any]:
-        return {"active_cameras": len(self._camera_last_seen), "active_tracks": len(self.track_states), **self.metrics.__dict__}
+        with self._lock:
+            detector_health = {}
+            for cid, det in self._camera_detectors.items():
+                entry = {"loaded": getattr(det, "model", None) is not None}
+                failures = getattr(det, "load_failures", 0)
+                if failures:
+                    entry["load_failures"] = failures
+                last_err = getattr(det, "last_error", None)
+                if last_err:
+                    entry["last_error"] = str(last_err)[:120]
+                detector_health[cid] = entry
+            return {"active_cameras": len(self._camera_last_seen), "active_tracks": len(self.track_states),
+                    "detectors": detector_health, **self.metrics.__dict__}
 
     def run(self, frame: Any):
         """Legacy scaffold entry point. Production callers use process_frame_packet."""

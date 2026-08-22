@@ -8,5 +8,6 @@
 # camera_id rules everywhere: ^[A-Za-z0-9_.\-]{1,64}$
 
 cameras:
-  LAPTOP_CAM: {location: "demo laptop", status: active}
-  CAM_01:     {location: "main gate",   status: planned}
+  LAPTOP_CAM: {location: "demo laptop",   status: active}
+  CAM_01:     {location: "main gate",     status: active}
+  CAM_02:     {location: "corridor cam",  status: active}

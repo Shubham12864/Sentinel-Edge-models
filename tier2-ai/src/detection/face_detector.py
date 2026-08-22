@@ -1,7 +1,11 @@
 """YOLO face detection and per-camera ByteTrack integration."""
 from __future__ import annotations
+import threading
 from pathlib import Path
 from typing import Any
+
+_LOAD_LOCK = threading.Lock()   # serialises YOLO weight loading across cameras
+
 
 class FaceDetector:
 
@@ -11,12 +15,15 @@ class FaceDetector:
         selected = weights_path if weights_path is not None else model_path
         self.weights_path, self.confidence, self.device = Path(selected) if selected else default, confidence, device
         self.model = None
+        self.load_failures = 0
     def _load(self) -> None:
         if self.model is not None: return
-        if not self.weights_path.exists(): raise FileNotFoundError(f"Face model weights not found: {self.weights_path}")
-        try: from ultralytics import YOLO
-        except ImportError as exc: raise RuntimeError("Face detection requires 'ultralytics'. Install requirements.txt.") from exc
-        self.model = YOLO(str(self.weights_path))
+        with _LOAD_LOCK:
+            if self.model is not None: return
+            if not self.weights_path.exists(): raise FileNotFoundError(f"Face model weights not found: {self.weights_path}")
+            try: from ultralytics import YOLO
+            except ImportError as exc: raise RuntimeError("Face detection requires 'ultralytics'. Install requirements.txt.") from exc
+            self.model = YOLO(str(self.weights_path))
     def detect_and_track(self, frame: Any):
         self._load()
         kwargs = {"tracker": "bytetrack.yaml", "persist": True, "conf": self.confidence, "verbose": False}
