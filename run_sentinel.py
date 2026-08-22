@@ -113,13 +113,15 @@ def main() -> None:
     cameras = load_cameras()
     if args.file:
         cameras[args.camera_id] = {"source": args.file, "fps": args.fps}
-    started = 0
-    for cid, meta in cameras.items():
-        outcome = manager_add(cid, meta.get("source"), float(meta.get("fps", 4.0)))
-        print(f"[tier1] {cid}: {meta.get('source')} -> "
-              + ("running" if outcome.get("ok") else outcome.get("error", "failed")))
-        started += bool(outcome.get("ok"))
-    print(f"[tier1] {started} camera(s) feeding tier2 -> tier3")
+    # NOTE: nothing auto-connects at boot. Cameras are mapped in the registry
+    # and operators connect them explicitly from Command HQ ("Connect" button).
+    if args.file:  # an explicit --file IS operator intent: register + connect it
+        outcome = manager_add(args.camera_id, args.file, args.fps)
+        print(f"[tier1] {args.camera_id}: {args.file} -> "
+              + ("running" if outcome.get("ok") else str(outcome.get("error", "failed"))))
+    else:
+        print(f"[tier1] {len(cameras)} camera(s) in registry (not auto-connected) "
+              f"-- connect them from the console")
 
     # ------------------------------------------------------- graceful exit -
     stopping = threading.Event()

@@ -58,16 +58,22 @@ def test_malformed_event_rejected(client):
 
 def test_camera_crud_validation(client):
     c, hub, _ = client
-    ok = c.post("/api/cameras", json={"camera_id": "CAM_09", "source": "../runs/x.avi",
-                                      "fps": 4, "location": "gate"})
-    assert ok.status_code == 200 and ok.json()["ok"]
-    assert c.get("/api/cameras").json()["cameras"][0]["camera_id"] == "CAM_09"
+    ok = c.post("/api/cameras/save", json={"camera_id": "CAM_09", "source": "../runs/x.avi",
+                                           "fps": 4, "location": "gate"})
+    assert ok.status_code == 200 and ok.json()["state"] == "saved"
+    rows = c.get("/api/cameras").json()["cameras"]
+    row = next(r for r in rows if r["camera_id"] == "CAM_09")
+    assert row["connected"] is False and row["status"] == "saved"   # saved ≠ connected
     for body in [{"camera_id": "../evil", "source": "x"},
                  {"camera_id": "", "source": "x"},
                  {"camera_id": "OK", "source": ""},
                  {"camera_id": "OK", "source": "x", "fps": 99},
                  {"camera_id": "x" * 65, "source": "y"}]:
-        assert c.post("/api/cameras", json=body).status_code == 422, body
+        assert c.post("/api/cameras/save", json=body).status_code == 422, body
+    # connect requires a real ingest bridge; with none set it stays 'connecting'
+    assert c.post("/api/cameras/CAM_09/connect").status_code == 200
+    assert c.post("/api/cameras/GHOST/connect").status_code == 404
+    assert c.post("/api/cameras/CAM_09/disconnect").json()["state"] == "saved"
     assert c.delete("/api/cameras/CAM_09").status_code == 200
     assert c.delete("/api/cameras/CAM_09").status_code == 404
 

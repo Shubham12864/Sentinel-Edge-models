@@ -42,6 +42,47 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,63}$")
 EVENT_FIELDS = {"track_id", "identity_name", "identity_id", "match_score", "verified",
                 "current_camera", "timestamp", "face_crop_url", "next_camera",
                 "eta_seconds", "transition_probability"}
+REGISTRY_PATH = REPO_ROOT / "tier1-ingest" / "cameras.yaml"
+
+
+def _load_registry() -> dict[str, dict[str, Any]]:
+    """Saved camera registry (tier1-ingest/cameras.yaml): ids -> source/fps/location."""
+    import yaml
+    if not REGISTRY_PATH.exists():
+        return {}
+    data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8")) or {}
+    cams = data.get("cameras") or {}
+    out: dict[str, dict[str, Any]] = {}
+    for k, v in cams.items():
+        meta = v if isinstance(v, dict) else {"source": v}
+        src = str(meta.get("source", ""))
+        resolved = src
+        if src and not src.startswith(("rtsp://", "http://", "https://")) \
+                and not src.isdigit() and not Path(src).exists():
+            for base in (REPO_ROOT, APP_DIR.parent / "tier1-ingest"):
+                candidate = base / src
+                if candidate.exists():
+                    resolved = str(candidate)
+                    break
+        out[str(k)] = {"source": resolved, "fps": float(meta.get("fps", 4.0)),
+                       "location": str(meta.get("location", ""))}
+    return out
+
+
+def _save_registry(cameras: dict[str, dict[str, Any]]) -> None:
+    """Persist the operator's camera mapping back to the Tier-1 registry."""
+    import yaml
+    REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"cameras": {}}
+    for cid, meta in sorted(cameras.items()):
+        entry: dict[str, Any] = {"source": meta.get("source", ""),
+                                 "fps": float(meta.get("fps", 4.0))}
+        if meta.get("location"):
+            entry["location"] = meta["location"]
+        payload["cameras"][cid] = entry
+    header = ("# Tier 1 camera registry - edited automatically by Command HQ.\n"
+              "# source: rtsp:// URL | device index | media file path\n")
+    REGISTRY_PATH.write_text(header + yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
 
 # --------------------------------------------------------------------- store
@@ -298,50 +339,113 @@ async def ws_events(ws: WebSocket):
 # --------------------------------------------------------------- cameras api
 @app.get("/api/cameras")
 async def cameras():
+    """Saved cameras from the registry + live connection state."""
+    saved = _load_registry()
+    rows = []
     with HUB.lock:
-        rows = []
-        for cid, meta in sorted(HUB.cameras.items()):
-            row = dict(meta)
-            row["camera_id"] = cid
-            row["has_live_frame"] = cid in HUB.latest_frames
-            rows.append(row)
+        for cid in sorted(set(saved) | set(HUB.cameras)):
+            live = HUB.cameras.get(cid, {})
+            meta = saved.get(cid) or {}
+            rows.append({
+                "camera_id": cid,
+                "source": meta.get("source") or live.get("source", ""),
+                "fps": meta.get("fps") or live.get("fps", 4.0),
+                "location": meta.get("location") or live.get("location", ""),
+                "connected": cid in HUB.cameras and live.get("status") == "running",
+                "status": live.get("status", "saved"),
+                "has_live_frame": cid in HUB.latest_frames,
+            })
     return {"cameras": rows}
 
 
-@app.post("/api/cameras")
-async def add_camera(body: dict[str, Any]):
-    cid = str(body.get("camera_id", "")).strip()
-    source = body.get("source", "")
+def _register(cid: str, source: str, fps: float, location: str) -> None:
+    with HUB.lock:
+        HUB.cameras[cid] = {"location": location, "fps": fps, "source": source,
+                            "status": "starting",
+                            "added_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+
+
+@app.post("/api/cameras/save")
+async def save_camera(body: dict[str, Any]):
+    """Add/update a camera in the mapping WITHOUT connecting it."""
+    cid, source = str(body.get("camera_id", "")).strip(), body.get("source", "")
     fps = float(body.get("fps", 4.0))
     location = str(body.get("location", ""))[:120]
     if not CAMERA_ID_RE.fullmatch(cid):
         raise HTTPException(422, f"invalid camera_id {cid!r} (allowed: A-Z a-z 0-9 _ . - , max 64)")
-    if source in ("", None):
+    if not source:
         raise HTTPException(422, "source required (rtsp:// URL, device index, or media path)")
     if not (0.5 <= fps <= 30):
         raise HTTPException(422, "fps must be within 0.5..30")
+    _register(cid, str(source), fps, location)
     with HUB.lock:
-        HUB.cameras[cid] = {"location": location, "fps": fps, "source": str(source),
-                            "status": "mapped", "added_at":
-                            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
-    result = {"ok": True, "camera_id": cid}
+        HUB.cameras[cid]["status"] = "saved"
+    saved = _load_registry()
+    saved[cid] = {"source": str(source), "fps": fps, "location": location}
+    _save_registry(saved)
+    return {"ok": True, "camera_id": cid, "state": "saved"}
+
+
+@app.post("/api/cameras/{camera_id}/connect")
+async def connect_camera(camera_id: str):
+    """Explicitly start ingestion for a saved camera."""
+    saved = _load_registry()
+    with HUB.lock:
+        live = HUB.cameras.get(camera_id, {})
+    meta = saved.get(camera_id) or {"source": live.get("source"), "fps": live.get("fps", 4.0),
+                                    "location": live.get("location", "")}
+    if camera_id not in saved and camera_id not in HUB.cameras:
+        raise HTTPException(404, f"unknown camera {camera_id!r} -- save it first")
+    source = meta["source"]
+    if not source:
+        raise HTTPException(422, f"{camera_id!r} has no source configured")
+    _register(camera_id, str(source), float(meta.get("fps", 4.0)), meta.get("location", ""))
+    result: dict[str, Any] = {"ok": True, "camera_id": camera_id, "state": "connecting"}
     if HUB.ingest_add is not None:
-        outcome = HUB.ingest_add(cid, source, fps)
+        outcome = await asyncio.to_thread(
+            lambda: HUB.ingest_add(camera_id, source, float(meta.get("fps", 4.0))))
+        status = "running" if outcome.get("ok") else f"error: {str(outcome.get('error', 'open failed'))[:80]}"
         with HUB.lock:
-            HUB.cameras[cid]["status"] = "running" if outcome.get("ok") else f"error: {outcome.get('error', 'open failed')[:80]}"
+            HUB.cameras[camera_id]["status"] = status
         result.update(outcome)
+        result["state"] = "running" if outcome.get("ok") else "error"
     return result
+
+
+@app.post("/api/cameras/{camera_id}/disconnect")
+async def disconnect_camera(camera_id: str):
+    """Stop ingestion but keep the mapping saved."""
+    with HUB.lock:
+        existed = camera_id in HUB.cameras
+    if not existed:
+        raise HTTPException(404, f"camera {camera_id!r} is not connected")
+    if HUB.ingest_remove is not None:
+        HUB.ingest_remove(camera_id)
+    _load_registry()  # keep file fresh in cache terms; mapping stays
+    with HUB.lock:
+        if camera_id in HUB.cameras:
+            HUB.cameras[camera_id]["status"] = "saved"
+        HUB.latest_frames.pop(camera_id, None)
+    return {"ok": True, "camera_id": camera_id, "state": "saved"}
 
 
 @app.delete("/api/cameras/{camera_id}")
 async def remove_camera(camera_id: str):
+    """Remove entirely: disconnect + delete from the saved mapping."""
     with HUB.lock:
-        existed = HUB.cameras.pop(camera_id, None)
         HUB.latest_frames.pop(camera_id, None)
-    if existed is None:
-        raise HTTPException(404, f"unknown camera {camera_id!r}")
     if HUB.ingest_remove is not None:
         HUB.ingest_remove(camera_id)
+    saved = _load_registry()
+    with HUB.lock:
+        existed = camera_id in HUB.cameras or camera_id in saved
+        HUB.cameras.pop(camera_id, None)
+    if camera_id in saved:
+        del saved[camera_id]
+        _save_registry(saved)
+        existed = True
+    if not existed:
+        raise HTTPException(404, f"unknown camera {camera_id!r}")
     return {"ok": True, "removed": camera_id}
 
 
