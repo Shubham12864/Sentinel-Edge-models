@@ -32,3 +32,7 @@ Thumbs.db
 
 # IDE
 .vscode/
+
+# Biometric / runtime artifacts - never publish
+tier3-hq/data/
+tier2-ai/data/test_crops/
