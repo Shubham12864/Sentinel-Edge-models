@@ -36,3 +36,6 @@ Thumbs.db
 # Biometric / runtime artifacts - never publish
 tier3-hq/data/
 tier2-ai/data/test_crops/
+
+# recorded demo footage stays local (too heavy for git)
+runs/
