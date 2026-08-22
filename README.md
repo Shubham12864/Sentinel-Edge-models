@@ -43,53 +43,141 @@ Sentinel Edge models/
 │   ├── data/
 │   ├── models/
 │   ├── notebooks/
-│   ├── sample_data/
-│   ├── scripts/
-│   ├── src/
-│   └── tests/
-├── runs/
-└── ...
+
+# Sentinel Edge
+
+Sentinel Edge is a local, end-to-end edge vision system for camera ingestion, face detection and tracking, identity matching, trajectory prediction, and operator monitoring.
+
+The repository combines three runtime tiers behind one launcher:
+
+```text
+Camera or video source
+        |
+Tier 1: CameraSource -> FramePacket
+        |
+Tier 2: YOLO + ByteTrack + ArcFace + FAISS -> UnifiedEvent
+        |
+Tier 3: Command HQ API + WebSocket + operator console
 ```
 
-## Important note
+## Features
 
-This repository is a model architecture and demo layer, not a complete front-end product.
+- OpenCV camera, RTSP, device-index, and recorded-file sources
+- Reconnect handling and FPS-bounded capture
+- YOLO face detection with Ultralytics ByteTrack tracking
+- ArcFace embeddings and FAISS identity search
+- Quality filtering, verification, saved face crops, and Markov next-camera prediction
+- Persistent identity gallery with multi-image enrollment and removal
+- Camera registry with explicit Connect and Disconnect controls
+- FastAPI Command HQ with live MJPEG feeds, event history, WebSocket updates, and a browser console
+- Runtime tests for ingestion, pipeline hardening, limits, enrollment, and server behavior
 
-It does not include:
+## Repository layout
 
-- a full website
-- a complete camera server
-- a full dashboard UI
-- a complete Tier 3 app
-
-Instead, it gives the AI core and a local camera-based validation flow.
-
-## Local demo
-
-Use the demo script inside the Tier 2 project:
-
-```bash
-cd tier2-ai
-python tests/demo.py
+```text
+run_sentinel.py       Start Tier 1 + Tier 2 + Tier 3 together
+tier1-ingest/         Camera sources, registry, and ingestion manager
+tier2-ai/              AI pipeline, models, identity data, scripts, and tests
+tier3-hq/              FastAPI server, persistent gallery, and operator console
+runs/                 Local recorded demo footage and inference output
 ```
 
-This test opens the laptop camera, sends frames through the pipeline, and prints event output in the terminal.
+## Setup
+
+Use Python 3.10 or newer. Create and activate a virtual environment from the repository root, then install the Tier 2 dependencies:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r tier2-ai\requirements.txt
+```
+
+The AI pipeline expects YOLO weights at:
+
+```text
+tier2-ai/models/yolo26n/yolo26 widerdataset.pt
+```
+
+The launcher can start without model loading by using `--no-ai`.
+
+## Start the system
+
+From the repository root:
+
+```powershell
+python run_sentinel.py
+```
+
+Open http://localhost:8000 for Command HQ. Cameras listed in [tier1-ingest/cameras.yaml](tier1-ingest/cameras.yaml) are loaded into the registry but are deliberately not connected automatically. Connect them from the console.
+
+Useful launcher options:
+
+```text
+--host HOST             Bind address (default: 127.0.0.1)
+--port PORT             HTTP port (default: 8000)
+--file PATH             Add and connect one recorded-file camera
+--camera-id ID          ID for --file (default: CAM_99)
+--fps FPS               Capture rate for --file (default: 4)
+--no-ai                 Run ingestion and Command HQ without loading AI models
+```
+
+For example:
+
+```powershell
+python run_sentinel.py --file runs\detect\predict-4\1.avi --camera-id CAM_99 --fps 4
+```
 
 ## Identity enrollment
 
-Put your known face images in:
+For command-line enrollment, place one or more images per identity in:
 
 ```text
-tier2-ai/data/known_identities/
+tier2-ai/data/known_identities/<identity-name>/
 ```
 
 Then run:
 
-```bash
-tier2-ai\scripts\enroll_identities.py
+```powershell
+python tier2-ai\scripts\enroll_identities.py
 ```
 
-or from the project root:
+When Command HQ is running, identities can also be enrolled and removed from the console. The Tier 3 gallery is stored in `tier3-hq/data/gallery.json` and its exported FAISS index is stored in `tier3-hq/data/identity_index.faiss`.
+
+## Development and tests
+
+Run the automated tests from each tier directory so local imports resolve correctly:
+
+```powershell
+pytest -q tier1-ingest
+pytest -q tier2-ai\tests
+pytest -q tier3-hq
+```
+
+The interactive webcam demo is separate from the automated tests:
+
+```powershell
+python tier2-ai\tests\demo.py
+```
+
+The primary Tier 2 API is `UnifiedPipeline.process_frame_packet(packet)`. The bounded `Tier2Runtime` bridge consumes the resulting packets and forwards events to Command HQ.
+
+## HTTP and realtime surface
+
+Command HQ provides:
+
+- `/` - operator console
+- `/api/stats` - runtime statistics
+- `/api/events` - recent events
+- `/api/cameras` - camera registry and status
+- `/api/feed/{camera_id}` - MJPEG camera feed
+- `/api/identities` - identity gallery
+- `/ws/events` - live event WebSocket
+
+Camera and identity mutations are exposed through the corresponding `/api/cameras/*` and `/api/identities/*` endpoints.
+
+## Data and privacy
+
+Identity vectors, uploaded enrollment images, face crops, camera footage, and inference output are local operational data. Review [`.gitignore`](.gitignore) before adding or publishing generated biometric artifacts.
 
 ```bash
 cd tier2-ai
