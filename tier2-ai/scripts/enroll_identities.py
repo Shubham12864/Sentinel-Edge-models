@@ -19,7 +19,7 @@ def main():
     for path in sorted(args.input.glob("*")):
         image = cv2.imread(str(path))
         if image is None: continue
-        embedding = embedder.get_embedding(image)
+        embedding = embedder.embed_image(image)
         if embedding is not None:
             searcher.add_identity(path.stem, embedding, path.stem); enrolled += 1
     searcher.save(args.output)

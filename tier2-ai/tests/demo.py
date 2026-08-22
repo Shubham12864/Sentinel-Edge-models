@@ -42,7 +42,7 @@ def ensure_identity_index() -> Path:
         if frame is None:
             continue
 
-        embedding = embedder.get_embedding(frame)
+        embedding = embedder.embed_image(frame)
         if embedding is None:
             continue
 

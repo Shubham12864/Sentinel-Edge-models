@@ -8,11 +8,7 @@ import tempfile
 import numpy as np
 
 class IdentitySearch:
-    """Thread-safe persistent FAISS identity index.
-
-    Multiple reference images can share one ``identity_id``.  Each image is a
-    separate vector, which improves matching across pose and lighting changes.
-    """
+    
     def __init__(self, dim: int = 512):
         self.dim, self.next_id, self.id_to_name, self.index = dim, 0, {}, None
         self._lock = RLock()

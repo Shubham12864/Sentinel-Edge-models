@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping
+import threading
 import time
 import cv2
 from .schemas import FramePacket, UnifiedEvent
@@ -52,24 +53,34 @@ class UnifiedPipeline:
         self._camera_detectors: dict[str, Any] = {}
         self._camera_last_seen: dict[str, float] = {}
         self._identity_last_seen: dict[str, tuple[str, float]] = {}
+        self._lock = threading.RLock()
         self.metrics = PipelineMetrics()
 
     @classmethod
     def create_default(cls, *, weights_path: str | Path | None = None, identity_index_path: str | Path | None = None,
-                       crop_dir: str | Path | None = None, ctx_id: int = -1, **kwargs) -> "UnifiedPipeline":
-        """Build the complete production pipeline once, without opening any camera."""
+                       crop_dir: str | Path | None = None, ctx_id: int | None = None, device: str | int | None = None, **kwargs) -> "UnifiedPipeline":
+        """Build the complete production pipeline once, without opening any camera.
+
+        device=None auto-detects: GPU stages run on CUDA when torch / onnxruntime
+        expose it (e.g. an RTX laptop), everything falls back to CPU otherwise.
+        device='cpu' forces CPU; device='cuda' requires a GPU.  An explicit
+        ctx_id overrides the embedder's derived context id.
+        """
+        from .runtime.device import resolve_device
         from .detection.face_detector import FaceDetector
         from .embedding.face_embedder import FaceEmbedder
         from .identity_search.faiss_index import IdentitySearch
         from .trajectory.transition_graph import TransitionGraph
         from .trajectory.markov_predictor import MarkovPredictor
+        plan = resolve_device(device)
+        effective_ctx = plan.ctx_id if ctx_id is None else ctx_id
         searcher = IdentitySearch()
         if identity_index_path is not None:
             searcher.load(identity_index_path)
         graph = TransitionGraph()
-        return cls(embedder=FaceEmbedder(ctx_id=ctx_id), searcher=searcher,
+        return cls(embedder=FaceEmbedder(ctx_id=effective_ctx), searcher=searcher,
                    predictor=MarkovPredictor(graph), crop_dir=crop_dir,
-                   detector_factory=lambda: FaceDetector(weights_path=weights_path), **kwargs)
+                   detector_factory=lambda: FaceDetector(weights_path=weights_path, device=plan.torch_device), **kwargs)
 
     @staticmethod
     def _timestamp_epoch(timestamp: str) -> float:
@@ -88,9 +99,12 @@ class UnifiedPipeline:
     def _detector_for(self, camera_id: str):
         if self.detector_factory is None:
             return self.detector
-        if camera_id not in self._camera_detectors:
-            self._camera_detectors[camera_id] = self.detector_factory()
-        return self._camera_detectors[camera_id]
+        with self._lock:
+            detector = self._camera_detectors.get(camera_id)
+            if detector is None:
+                detector = self.detector_factory()
+                self._camera_detectors[camera_id] = detector
+        return detector
 
     def _save_crop(self, crop, camera_id: str, timestamp: str, track_id: int) -> str | None:
         self.crop_dir.mkdir(parents=True, exist_ok=True)
@@ -99,16 +113,17 @@ class UnifiedPipeline:
         return str(path) if cv2.imwrite(str(path), crop) else None
 
     def _cleanup(self, now: float) -> None:
-        expired = [key for key, state in self.track_states.items() if now - state.last_seen_epoch > self.track_ttl_seconds]
-        for key in expired:
-            del self.track_states[key]
-        self.metrics.expired_tracks += len(expired)
-        inactive_cameras = [camera for camera, seen in self._camera_last_seen.items() if now - seen > self.track_ttl_seconds]
-        for camera in inactive_cameras:
-            detector = self._camera_detectors.pop(camera, None)
-            if detector is not None and hasattr(detector, "close"):
-                detector.close()
-            del self._camera_last_seen[camera]
+        with self._lock:
+            expired = [key for key, state in self.track_states.items() if now - state.last_seen_epoch > self.track_ttl_seconds]
+            for key in expired:
+                del self.track_states[key]
+            self.metrics.expired_tracks += len(expired)
+            inactive_cameras = [camera for camera, seen in self._camera_last_seen.items() if now - seen > self.track_ttl_seconds]
+            for camera in inactive_cameras:
+                detector = self._camera_detectors.pop(camera, None)
+                if detector is not None and hasattr(detector, "close"):
+                    detector.close()
+                del self._camera_last_seen[camera]
 
     def _observe_verified_transition(self, identity_id: str | None, camera_id: str, now: float) -> None:
         if not identity_id or self.predictor is None or getattr(self.predictor, "transition_graph", None) is None:
@@ -121,7 +136,12 @@ class UnifiedPipeline:
         self._identity_last_seen[identity_id] = (camera_id, now)
 
     def process_frame_packet(self, packet: Mapping[str, Any]) -> list[dict[str, Any]]:
-        """Process the frozen Track 1 FramePacket contract and return Track 3 events."""
+        """Process the frozen Track 1 FramePacket contract and return Track 3 events.
+
+        Safe to call from multiple per-camera worker threads concurrently:
+        shared bookkeeping is guarded by self._lock while detection, embedding
+        and crop disk writes run outside it.
+        """
         frame_packet = FramePacket.from_mapping(packet)
         now = self._timestamp_epoch(frame_packet.timestamp)
         self._cleanup(now)
@@ -131,52 +151,62 @@ class UnifiedPipeline:
         try:
             detections = detector.detect_and_track(frame_packet.frame)
         except Exception:
-            self.metrics.processing_errors += 1
+            with self._lock:
+                self.metrics.processing_errors += 1
             return []
-        self.metrics.packets_processed += 1
-        self._camera_last_seen[frame_packet.camera_id] = now
+        camera_id = frame_packet.camera_id
+        with self._lock:
+            self.metrics.packets_processed += 1
+            self._camera_last_seen[camera_id] = now
         events: list[dict[str, Any]] = []
         for detection in detections:
-            self.metrics.detections_seen += 1
+            with self._lock:
+                self.metrics.detections_seen += 1
             track_id = detection.get("track_id")
             if track_id is None or "bbox" not in detection:
                 continue
             crop = self._crop(frame_packet.frame, detection["bbox"])
             if not passes_quality_gate(crop):
-                self.metrics.quality_rejections += 1
+                with self._lock:
+                    self.metrics.quality_rejections += 1
                 continue
-            key = (frame_packet.camera_id, int(track_id))
-            is_new = key not in self.track_states
-            state = self.track_states.setdefault(key, TrackState())
-            state.last_seen_epoch = now
-            quality = laplacian_variance(crop)
+            key = (camera_id, int(track_id))
+            with self._lock:
+                is_new = key not in self.track_states
+                state = self.track_states.setdefault(key, TrackState())
+                state.last_seen_epoch = now
+                quality = laplacian_variance(crop)
+                should_reembed = is_new or (not state.verified and quality >= max(80.0, state.best_quality * self.crop_improvement_ratio))
             identity_changed = False
-            should_reembed = is_new or (not state.verified and quality >= max(80.0, state.best_quality * self.crop_improvement_ratio))
+            embedding = None
             if should_reembed and self.embedder is not None and self.searcher is not None:
-                previous_verified = state.verified
-                previous_identity = state.raw_identity_id
-                embedding = self.embedder.get_embedding(crop)
+                embedding = self.embedder.embed_from_bbox(frame_packet.frame, detection["bbox"])
+            with self._lock:
+                previous_verified, previous_identity = state.verified, state.raw_identity_id
                 if embedding is not None:
                     state.raw_name, state.raw_identity_id, state.score = self.searcher.search(embedding)
                 state.verified = self.verifier.verify(state.score)
                 identity_changed = state.verified != previous_verified or state.raw_identity_id != previous_identity
-            crop_improved = state.crop_url is None or quality >= state.best_quality * self.crop_improvement_ratio
+                crop_improved = state.crop_url is None or quality >= state.best_quality * self.crop_improvement_ratio
+            saved = None
             if crop_improved:
-                saved = self._save_crop(crop, frame_packet.camera_id, frame_packet.timestamp, int(track_id))
+                saved = self._save_crop(crop, camera_id, frame_packet.timestamp, int(track_id))
+            with self._lock:
                 if saved is not None:
                     state.crop_url, state.best_quality = saved, quality
-            self._observe_verified_transition(state.raw_identity_id if state.verified else None, frame_packet.camera_id, now)
-            emit = is_new or identity_changed or crop_improved or now - state.last_event_epoch >= self.event_interval_seconds
-            if not emit:
-                continue
-            prediction = self.predictor.predict(frame_packet.camera_id, now=now) if self.predictor else {"next_camera": None, "eta_seconds": None, "probability": None}
-            state.last_event_epoch = now
-            event = UnifiedEvent(track_id=str(track_id), identity_name=state.raw_name if state.verified else None,
-                identity_id=state.raw_identity_id if state.verified else None, match_score=float(state.score), verified=state.verified,
-                current_camera=frame_packet.camera_id, timestamp=frame_packet.timestamp, face_crop_url=state.crop_url,
-                next_camera=prediction["next_camera"], eta_seconds=prediction["eta_seconds"], transition_probability=prediction["probability"])
+                self._observe_verified_transition(state.raw_identity_id if state.verified else None, camera_id, now)
+                emit = is_new or identity_changed or crop_improved or now - state.last_event_epoch >= self.event_interval_seconds
+                if not emit:
+                    continue
+                prediction = self.predictor.predict(camera_id, now=now) if self.predictor else {"next_camera": None, "eta_seconds": None, "probability": None}
+                state.last_event_epoch = now
+                event = UnifiedEvent(track_id=str(track_id), identity_name=state.raw_name if state.verified else None,
+                    identity_id=state.raw_identity_id if state.verified else None, match_score=float(state.score), verified=state.verified,
+                    current_camera=camera_id, timestamp=frame_packet.timestamp, face_crop_url=state.crop_url,
+                    next_camera=prediction["next_camera"], eta_seconds=prediction["eta_seconds"], transition_probability=prediction["probability"])
             events.append(event.to_dict())
-            self.metrics.events_emitted += 1
+            with self._lock:
+                self.metrics.events_emitted += 1
         return events
 
     def health(self) -> dict[str, Any]:
