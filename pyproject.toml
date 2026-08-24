@@ -9,7 +9,7 @@ description = "Sentinel Edge - edge-native multi-camera AI surveillance grid (BY
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Team Sentinel Core" }]
+authors = [{ name = "Shubham" }]
 dependencies = [
     "numpy>=1.26",
     "opencv-python>=4.9",
