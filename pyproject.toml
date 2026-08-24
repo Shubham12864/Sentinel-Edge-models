@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-edge"
+version = "1.0.0"
+description = "Sentinel Edge - edge-native multi-camera AI surveillance grid (BYOC: your machine, your GPU)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Team Sentinel Core" }]
+dependencies = [
+    "numpy>=1.26",
+    "opencv-python>=4.9",
+    "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+ai = [
+    "torch>=2.2",
+    "ultralytics>=8.0",
+    "insightface>=0.7",
+    "onnxruntime>=1.18",
+    "faiss-cpu>=1.8",
+]
+gpu = [
+    "torch>=2.2",
+    "ultralytics>=8.0",
+    "insightface>=0.7",
+    "onnxruntime-gpu>=1.18",
+    "faiss-cpu>=1.8",
+]
+onvif = ["onvif-zeep-async>=2.0"]
+all = ["sentinel-edge[ai,onvif]"]
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+
+[tool.setuptools]
+packages = ["sentinel"]
+
+[tool.setuptools.package-dir]
+sentinel = "sentinel"

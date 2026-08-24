@@ -7,3 +7,7 @@ cameras:
   CAM_02:
     source: C:\Users\Shubham\Downloads\Sentinel Edge models\tier1-ingest\..\runs\detect\predict-4\1.avi
     fps: 3.0
+  WEBCAM_1:
+    source: '1'
+    fps: 3.0
+    location: auto-detected webcam

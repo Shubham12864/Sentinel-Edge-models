@@ -1,0 +1,257 @@
+Metadata-Version: 2.4
+Name: sentinel-edge
+Version: 1.0.0
+Summary: Sentinel Edge - edge-native multi-camera AI surveillance grid (BYOC: your machine, your GPU)
+Author: Team Sentinel Core
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.26
+Requires-Dist: opencv-python>=4.9
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn>=0.29
+Requires-Dist: python-multipart>=0.0.9
+Provides-Extra: ai
+Requires-Dist: torch>=2.2; extra == "ai"
+Requires-Dist: ultralytics>=8.0; extra == "ai"
+Requires-Dist: insightface>=0.7; extra == "ai"
+Requires-Dist: onnxruntime>=1.18; extra == "ai"
+Requires-Dist: faiss-cpu>=1.8; extra == "ai"
+Provides-Extra: gpu
+Requires-Dist: torch>=2.2; extra == "gpu"
+Requires-Dist: ultralytics>=8.0; extra == "gpu"
+Requires-Dist: insightface>=0.7; extra == "gpu"
+Requires-Dist: onnxruntime-gpu>=1.18; extra == "gpu"
+Requires-Dist: faiss-cpu>=1.8; extra == "gpu"
+Provides-Extra: onvif
+Requires-Dist: onvif-zeep-async>=2.0; extra == "onvif"
+Provides-Extra: all
+Requires-Dist: sentinel-edge[ai,onvif]; extra == "all"
+
+# 🛡 Sentinel Edge — Multi-Camera AI Surveillance Grid
+
+Sentinel-Edge is an edge-native, multi-camera surveillance pipeline. It detects and tracks people across camera feeds, verifies identity against a private face database, predicts the next likely camera with an ETA — and presents everything in a live operator console.
+
+```
+SEE  →  IDENTIFY  →  PREDICT  →  ALERT
+detect every frame   ArcFace + FAISS   Markov graph    live operator
+                     512-D identity    next camera     console + events
+                                       + ETA
+```
+
+> **Track architecture (frozen contracts)**
+> `Tier 1` camera gateway → `FramePacket` → `Tier 2` AI vision & prediction → `UnifiedEvent` → `Tier 3` Command HQ
+> Each tier is independently testable; the only coupling is the two data contracts.
+
+---
+
+## ✨ Highlights
+
+| | |
+|---|---|
+| 🎥 **Any source** | RTSP / ONVIF IP cams, USB webcams, recorded footage — one interface |
+| 🔌 **Self-healing ingest** | auto-reconnect, hot-plug, bounded FPS, latest-frame processing (no backlog ever builds) |
+| 🎯 **Custom detector** | YOLO26n fine-tuned on WIDER FACE — among the first YOLO26-face models ([weights](https://huggingface.co/Shubham12864/YOLO26n-face)) |
+| 🧠 **Recognition that survives the real world** | landmark-aligned ArcFace embeddings, FAISS search, hysteresis verification |
+| 🔮 **Trajectory prediction** | online Markov transition graph learns *your* site: next camera + ETA + probability, persisted across restarts |
+| 🖱 **Zero-code operations** | add cameras, connect/disconnect, enroll identities by drag-and-drop — all from the browser |
+| 🔐 **Adversarially hardened** | path-traversal, forged-timestamp TTL-wipe, thread-bomb and gallery-poisoning regressions are tested |
+| ⚡ **Edge-first privacy** | video never leaves the node; only structured events flow to the console |
+
+---
+
+## 🚀 Quick Start
+
+```bash
+# 1 · clone
+git clone https://github.com/Shubham12864/Sentinel-Edge-models.git
+cd Sentinel-Edge-models
+
+# 2 · install (Python 3.10+)
+python -m pip install -r tier2-ai/requirements.txt
+
+# 3 · run the whole grid
+python run_sentinel.py
+# → console opens at http://127.0.0.1:8000
+```
+
+Useful variants:
+
+```bash
+python run_sentinel.py --no-ai                         # ingest + console only
+python run_sentinel.py --file clip.mp4 --camera-id CAM_99  # demo with a video file
+```
+
+### First 3 minutes
+
+1. **Cameras** tab → *Save to mapping* (`CAM_03`, an RTSP URL / webcam index / any `.mp4`) → press **Connect**
+2. **Identities** tab → drop 2–6 clear face photos → name → **Enroll** *(recognition updates without a restart)*
+3. **Live** tab → watch verified identities, event feed, and predictions
+
+---
+
+## 🏗 Architecture
+
+```
+┌────────────────────────── TIER 1 · INGEST ──────────────────────────┐
+│  CameraSource threads (RTSP / USB / file)                           │
+│  reconnect · hot-plug · FPS bounding · latest-frame semantics       │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               ▼  FramePacket {camera_id, timestamp, frame, metadata}
+┌────────────────────────── TIER 2 · AI CORE ─────────────────────────┐
+│  quality gate → YOLO26n-Face → ByteTrack → ArcFace(buffalo_l)       │
+│  → FAISS identity search → verifier (hysteresis+margin)             │
+│  → Markov transition predictor (persisted, Laplace-smoothed)        │
+│  per-camera workers · bounded thread pool · gallery hot-reload      │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               ▼  UnifiedEvent
+┌────────────────────────── TIER 3 · COMMAND HQ ──────────────────────┐
+│  FastAPI + WebSocket fan-out · MJPEG live grid                      │
+│  one-click enrollment · removable gallery · camera mapping CRUD     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Repository layout
+
+```
+├── run_sentinel.py            # single-command launcher for all three tiers
+├── tier1-ingest/              # camera gateway and camera registry
+├── tier2-ai/                  # AI core, models, scripts, and tests
+│   ├── src/
+│   │   ├── detection/         # YOLO26n-face + ByteTrack
+│   │   ├── embedding/         # ArcFace embeddings
+│   │   ├── identity_search/   # FAISS gallery and hot reload
+│   │   ├── quality_gate/      # blur/size filtering
+│   │   ├── runtime/           # device plan and bounded workers
+│   │   ├── trajectory/        # transition graph and Markov predictor
+│   │   └── verification/      # threshold and margin verification
+│   ├── scripts/               # enrollment and threshold calibration
+│   └── tests/                 # unit and adversarial regression tests
+└── tier3-hq/                  # FastAPI server, console, and tests
+```
+
+---
+
+## 🧪 Testing & Verification
+
+```bash
+pytest tier1-ingest/test_camera_source.py tier3-hq/test_server.py tier2-ai/tests/ -q
+```
+
+The tests cover:
+
+- `FramePacket` and `UnifiedEvent` contract conformance
+- malformed input, replayed packets, path traversal, forged timestamps, and gallery poisoning
+- concurrency, worker bounds, registry pruning, and multi-camera processing
+- device planning, face alignment, verifier logic, and FAISS search margins
+- API validation and clean 4xx responses for hostile payloads
+
+GPU is recommended for multi-camera live deployment. CPU is suitable for single-camera demos and development.
+
+---
+
+## ⚙️ Configuration
+
+| What | Where | Notes |
+|---|---|---|
+| Camera mapping | `tier1-ingest/cameras.yaml` | managed by Command HQ; saved cameras are not auto-connected |
+| Tier-2 allowlist | `tier2-ai/config/cameras.yaml` | defense-in-depth camera ID validation |
+| Detector weights | `tier2-ai/models/yolo26n/yolo26 widerdataset.pt` | supplied YOLO model location |
+| Verification threshold | `MatchVerifier(threshold=…)` | calibrate with `scripts/calibrate_threshold.py` |
+
+> **Biometrics stay local.** Face crops, uploaded enrollment images, identity vectors, and FAISS galleries are git-ignored and never leave the machine through this application.
+
+---
+
+## 🗺 Roadmap
+
+- [ ] Liveness defense between detection and embedding
+- [ ] Per-camera threshold adaptation and score calibration
+- [ ] RAG advisory panel behind the event feed
+- [ ] Map view with predicted-position markers
+- [ ] Docker Compose deployment
+
+---
+
+## 👥 Team & Tracks
+
+Built as three independent tracks around two frozen contracts:
+
+| Track | Scope |
+|---|---|
+| **1 · Ingestion** | camera gateway, reconnection, and `FramePacket`s |
+| **2 · AI Vision & Prediction** | detect → identify → predict |
+| **3 · Orchestration & HQ** | event hub, console, and operator tooling |
+
+
+```bash
+cd tier2-ai
+python scripts/enroll_identities.py
+```
+
+This builds the FAISS identity index from the folder images.
+
+## Real pipeline flow
+
+```text
+Camera / Source
+    ↓
+Tier 1: FramePacket creation
+    ↓
+Tier 2: Face detection + tracking + embedding + FAISS match
+    ↓
+Tier 3: Event receiver / alert dashboard / downstream app
+```
+
+## Main project details
+
+The model code is under:
+
+- [tier2-ai/src](tier2-ai/src)
+- [tier2-ai/scripts](tier2-ai/scripts)
+- [tier2-ai/tests](tier2-ai/tests)
+
+The main processing entry point is:
+
+- `UnifiedPipeline.process_frame_packet(...)`
+
+This is the place where a frame becomes an AI event.
+
+## Requirements
+
+The project dependencies are listed in:
+
+- [tier2-ai/requirements.txt](tier2-ai/requirements.txt)
+
+Install them with:
+
+```bash
+cd tier2-ai
+pip install -r requirements.txt
+```
+
+## Model files
+
+The YOLO weights are expected in:
+
+```text
+tier2-ai/models/yolo26n/yolo26 widerdataset.pt
+```
+
+## Practical use
+
+This is suitable for:
+
+- local testing
+- model validation
+- edge AI experiments
+- future cloud deployment
+- building upstream and downstream integrations
+
+It is not a complete final product by itself.
+
+## License
+
+This project is shared for learning and model experimentation. Add your own license if you plan to publish it publicly.
+
