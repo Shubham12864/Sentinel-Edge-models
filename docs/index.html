@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel Edge — AI surveillance that runs on YOUR hardware</title>
+<style>
+  :root{--bg:#0a0d12;--surface:#10151d;--raise:#161d27;--line:#1f2833;
+        --txt:#e6ecf3;--dim:#6b7a8c;--acc:#4cc2ff}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font:15px/1.6 "Inter","Segoe UI",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+  .wrap{max-width:1060px;margin:0 auto;padding:0 24px}
+
+  header{position:sticky;top:0;background:rgba(10,13,18,.85);backdrop-filter:blur(10px);
+         border-bottom:1px solid var(--line);z-index:9}
+  .nav{display:flex;align-items:center;gap:26px;height:60px}
+  .logo{font-weight:700;letter-spacing:.14em;font-size:14px}
+  .logo em{color:var(--acc);font-style:normal}
+  .nav a.link{color:var(--dim);font-size:13.5px}
+  .nav a.link:hover{color:var(--txt)}
+  .nav .gh{margin-left:auto}
+
+  .hero{padding:96px 0 72px;text-align:center}
+  .hero h1{font-size:clamp(30px,5vw,52px);font-weight:800;letter-spacing:-.02em;line-height:1.12}
+  .hero h1 span{color:var(--acc)}
+  .hero p{max-width:640px;margin:20px auto 32px;color:var(--dim);font-size:17px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:12px 26px;border-radius:10px;font-weight:600;font-size:14.5px;cursor:pointer;border:none}
+  .btn.primary{background:var(--acc);color:#03131d}
+  .btn.primary:hover{filter:brightness(1.1);text-decoration:none}
+  .btn.ghost{border:1px solid var(--line);color:var(--txt)}
+  .btn.ghost:hover{border-color:var(--acc)}
+
+  .install{margin:44px auto 0;max-width:520px;text-align:left;background:var(--surface);
+           border:1px solid var(--line);border-radius:12px;padding:16px 18px;font-family:"Cascadia Code",Consolas,monospace;font-size:13px}
+  .install .row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;color:#9fe8ff}
+  .copy{all:unset;cursor:pointer;color:var(--dim);font-size:11px;padding:2px 8px;border:1px solid var(--line);border-radius:6px;font-family:inherit}
+  .copy:hover{color:var(--acc);border-color:var(--acc)}
+  .hint{text-align:center;color:var(--dim);font-size:12px;margin-top:10px}
+
+  section{padding:70px 0}
+  h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--acc);text-align:center;margin-bottom:10px;font-weight:700}
+  h3.sub{text-align:center;font-size:clamp(22px,3vw,30px);font-weight:700;margin-bottom:40px;letter-spacing:-.01em}
+
+  .features{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px}
+  .card .ico{font-size:26px;margin-bottom:12px}
+  .card b{display:block;font-size:16px;margin-bottom:8px}
+  .card p{color:var(--dim);font-size:13.5px}
+
+  .arch{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:34px;display:flex;
+        gap:14px;align-items:stretch;justify-content:center;flex-wrap:wrap}
+  .box{flex:1;min-width:200px;max-width:280px;background:var(--bg);border:1px solid var(--line);
+       border-radius:12px;padding:20px;text-align:center}
+  .box b{color:var(--acc);font-size:12px;letter-spacing:.12em}
+  .box p{color:var(--dim);font-size:12.5px;margin-top:8px}
+  .arrow{align-self:center;color:var(--acc);font-size:20px}
+
+  details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:10px;max-width:720px;margin-inline:auto}
+  summary{cursor:pointer;font-weight:600;font-size:14.5px}
+  details p{color:var(--dim);margin-top:10px;font-size:13.5px}
+
+  footer{border-top:1px solid var(--line);padding:28px 0;color:var(--dim);font-size:12.5px;text-align:center}
+
+  .reveal{opacity:0;transform:translateY(18px);transition:.6s ease}
+  .reveal.in{opacity:1;transform:none}
+  @media(max-width:640px){.nav a.link:not(.gh){display:none}.hero{padding:64px 0 48px}}
+</style>
+</head>
+<body>
+
+<header><div class="wrap nav">
+  <span class="logo">SENTINEL<em>·EDGE</em></span>
+  <a class="link" href="#features">Features</a>
+  <a class="link" href="#architecture">Architecture</a>
+  <a class="link" href="#faq">FAQ</a>
+  <a class="link gh" href="https://github.com/Shubham12864/Sentinel-Edge-models">GitHub ↗</a>
+</div></header>
+
+<div class="wrap hero">
+  <h1>AI surveillance that runs<br>on <span>your</span> hardware.</h1>
+  <p>Sentinel Edge turns ordinary cameras into a self-learning security grid —
+     detection, face recognition and next-camera prediction, all computed locally.
+     <b>Your footage never leaves your machine.</b></p>
+  <div class="cta">
+    <a class="btn primary" href="#install">Get started — free</a>
+    <a class="btn ghost" href="https://github.com/Shubham12864/Sentinel-Edge-models">View source</a>
+  </div>
+  <div class="install" id="install">
+    <div class="row"><span>pip install sentinel-edge[ai]</span><button class="copy" data-t="pip install &quot;sentinel-edge[ai]&quot;">copy</button></div>
+    <div class="row"><span>sentinel setup</span><button class="copy" data-t="sentinel setup">copy</button></div>
+    <div class="row"><span>sentinel up</span><button class="copy" data-t="sentinel up">copy</button></div>
+  </div>
+  <p class="hint">Python 3.10+ · works on CPU, faster with NVIDIA GPU · Windows / Linux / macOS</p>
+</div>
+
+<section id="features"><div class="wrap">
+  <h2>Why Sentinel Edge</h2>
+  <h3 class="sub">Everything computes at the edge. Only alerts hit the network.</h3>
+  <div class="features">
+    <div class="card reveal"><div class="ico">🔒</div><b>Private by design</b>
+      <p>Video is processed on your machine and never uploaded. The identity database stays yours — stored locally, removable anytime.</p></div>
+    <div class="card reveal"><div class="ico">🎮</div><b>Bring your own compute</b>
+      <p>Auto-detects your NVIDIA GPU (CUDA) or falls back to CPU. One wizard command maps your cameras and tunes FPS to your hardware.</p></div>
+    <div class="card reveal"><div class="ico">🖥️</div><b>Live operator console</b>
+      <p>A browser dashboard with real-time video grid, verified-identity event feed, and predictions of where a person is heading next.</p></div>
+    <div class="card reveal"><div class="ico">🎥</div><b>Any camera</b>
+      <p>RTSP / ONVIF IP cams, USB webcams, even recorded footage for demos. Auto-reconnect and hot-plug built in.</p></div>
+    <div class="card reveal"><div class="ico">🧠</div><b>Serious AI stack</b>
+      <p>Custom YOLO26n-face detector + ArcFace embeddings + FAISS search — landmark-aligned for production-grade accuracy.</p></div>
+    <div class="card reveal"><div class="ico">🔮</div><b>Predictive tracking</b>
+      <p>A Markov model learns how people move through YOUR site and predicts the next camera with an ETA.</p></div>
+  </div>
+</div></section>
+
+<section id="architecture"><div class="wrap">
+  <h2>Architecture</h2>
+  <h3 class="sub">Three modules, two frozen contracts, one command</h3>
+  <div class="arch">
+    <div class="box"><b>TIER 1 · INGEST</b><p>Camera gateway.<br>RTSP · USB · files.<br>Reconnect &amp; hot-plug.</p></div>
+    <div class="arrow">➜</div>
+    <div class="box"><b>TIER 2 · AI CORE</b><p>Detect → track → identify.<br>ArcFace + FAISS.<br>Predict next camera + ETA.</p></div>
+    <div class="arrow">➜</div>
+    <div class="box"><b>TIER 3 · CONSOLE</b><p>Live grid &amp; event feed in your browser. Enroll identities in one click.</p></div>
+  </div>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>FAQ</h2>
+  <h3 class="sub">Questions everyone asks</h3>
+  <details open><summary>Does my video leave my machine?</summary>
+    <p>No. All inference runs locally on your CPU/GPU. Nothing is uploaded — the website is just where you download the app from.</p></details>
+  <details><summary>What hardware do I need?</summary>
+    <p>Any modern laptop works (CPU mode, ~1–3 fps/camera). An NVIDIA GPU unlocks full-speed multi-camera recognition. The setup wizard tells you exactly what your machine can do.</p></details>
+  <details><summary>Is it really free?</summary>
+    <p>Yes — open source under MIT (model weights AGPL-3.0). No accounts, no cloud subscription, no telemetry.</p></details>
+</div></section>
+
+<footer><div class="wrap">SIH 2026 · Team Sentinel Core · MIT license (weights AGPL-3.0) ·
+  <a href="https://github.com/Shubham12864/Sentinel-Edge-models">GitHub</a></div></footer>
+
+<script>
+// copy buttons
+document.querySelectorAll('.copy').forEach(b=>b.onclick=async()=>{
+  await navigator.clipboard.writeText(b.dataset.t);
+  const o=b.textContent;b.textContent='copied ✓';setTimeout(()=>b.textContent=o,1400);
+});
+// scroll reveal
+const io=new IntersectionObserver(es=>es.forEach(e=>{
+  if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}
+}),{threshold:.15});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+// smooth anchors
+document.querySelectorAll('a[href^="#"]').forEach(a=>a.onclick=e=>{
+  e.preventDefault();document.querySelector(a.getAttribute('href'))
+   ?.scrollIntoView({behavior:'smooth'});});
+</script>
+</body>
+</html>
