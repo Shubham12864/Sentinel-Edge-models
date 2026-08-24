@@ -1,0 +1,5 @@
+include sentinel/_app/tier1-ingest/*.py
+include sentinel/_app/tier1-ingest/cameras.yaml
+recursive-include sentinel/_app/tier2-ai *.py *.yaml *.txt
+recursive-include sentinel/_app/tier3-hq *.py
+recursive-include sentinel/_app/tier3-hq/static *

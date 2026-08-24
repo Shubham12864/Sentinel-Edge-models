@@ -2,7 +2,7 @@ Metadata-Version: 2.4
 Name: sentinel-edge
 Version: 1.0.0
 Summary: Sentinel Edge - edge-native multi-camera AI surveillance grid (BYOC: your machine, your GPU)
-Author: Team Sentinel Core
+Author: Shubham
 License: MIT
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
@@ -12,6 +12,7 @@ Requires-Dist: pyyaml>=6.0
 Requires-Dist: fastapi>=0.110
 Requires-Dist: uvicorn>=0.29
 Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: huggingface_hub>=0.30
 Provides-Extra: ai
 Requires-Dist: torch>=2.2; extra == "ai"
 Requires-Dist: ultralytics>=8.0; extra == "ai"

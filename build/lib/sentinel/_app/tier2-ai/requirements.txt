@@ -1,0 +1,12 @@
+numpy>=1.26
+pandas>=2.2
+pyyaml>=6.0
+opencv-python>=4.9
+scikit-learn>=1.5
+torch>=2.2
+ultralytics>=8.0
+insightface>=0.7
+onnxruntime>=1.18
+faiss-cpu>=1.8
+networkx>=3.3
+pytest>=8.0

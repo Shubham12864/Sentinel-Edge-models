@@ -42,7 +42,10 @@ all = ["sentinel-edge[ai,onvif]"]
 sentinel = "sentinel.cli:main"
 
 [tool.setuptools]
-packages = ["sentinel"]
+packages = ["sentinel", "sentinel._app", "sentinel._app.tier1-ingest", "sentinel._app.tier3-hq"]
 
 [tool.setuptools.package-dir]
 sentinel = "sentinel"
+
+[tool.setuptools.package-data]
+"sentinel" = ["_app/**/*"]
