@@ -274,6 +274,45 @@ async def index():
     return HTMLResponse(html.read_text(encoding="utf-8"))
 
 
+@app.get("/api/tracks")
+async def tracks():
+    """Persons currently tracked (per-camera track states) for the live board."""
+    out = []
+    pipe = HUB.pipeline
+    if pipe is None:
+        return {"tracks": [], "active": 0}
+    try:
+        states = getattr(pipe, "track_states", {}) or {}
+        now = time.time()
+        with pipe._lock:
+            for tid, st in states.items():
+                last = float(getattr(st, "last_seen_epoch", 0) or 0)
+                if last and now - last > 30:
+                    continue
+                out.append({
+                    "track_id": str(getattr(st, "track_id", tid)),
+                    "camera": getattr(st, "camera_id", "") or getattr(st, "last_camera", ""),
+                    "name": getattr(st, "identity_name", None),
+                    "verified": bool(getattr(st, "verified", False)),
+                    "score": round(float(getattr(st, "best_score", 0) or 0), 3),
+                    "age_s": int(max(0, now - float(getattr(st, "first_seen_epoch", last)))) if last else 0,
+                })
+    except Exception:
+        pass
+    return {"tracks": out[:24], "active": len(out)}
+
+
+@app.get("/api/identities/{identity_id}/avatar")
+async def identity_avatar(identity_id: str):
+    """First enrollment photo as a thumbnail."""
+    from fastapi.responses import FileResponse
+    safe = re.sub(r"[^A-Za-z0-9_.\-]", "_", identity_id)[:60]
+    if UPLOAD_DIR.exists():
+        for cand in sorted(UPLOAD_DIR.glob(f"{safe}_*.jpg")):
+            return FileResponse(cand, media_type="image/jpeg")
+    raise HTTPException(404, "no photo")
+
+
 @app.get("/api/stats")
 async def stats():
     with HUB.lock:

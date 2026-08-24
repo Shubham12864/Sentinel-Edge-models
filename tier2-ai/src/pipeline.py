@@ -24,6 +24,8 @@ class TrackState:
     crop_url: str | None = None
     last_seen_epoch: float = 0.0
     last_event_epoch: float = 0.0
+    first_seen_epoch: float = 0.0
+    camera_id: str = ""
 
 @dataclass
 class PipelineMetrics:
@@ -248,6 +250,9 @@ class UnifiedPipeline:
                 self.metrics.detections_seen += 1
                 is_new = key not in self.track_states
                 state = self.track_states.setdefault(key, TrackState())
+                if is_new:
+                    state.first_seen_epoch = now
+                    state.camera_id = camera_id
                 state.last_seen_epoch = now
                 previous_verified, previous_identity = state.verified, state.raw_identity_id
                 should_reembed = is_new or (not state.verified and quality >= max(80.0, state.best_quality * self.crop_improvement_ratio))
