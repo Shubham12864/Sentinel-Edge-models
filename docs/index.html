@@ -83,7 +83,7 @@
 <div class="wrap hero">
   <h1>AI surveillance that runs<br>on <span>your</span> hardware.</h1>
   <p>Sentinel Edge turns ordinary cameras into a self-learning security grid —
-     detection, face recognition and next-camera prediction, all computed locally.
+     detection, face recognition and live trajectory tracking, all computed locally.
      <b>Your footage never leaves your machine.</b></p>
   <div class="cta">
     <a class="btn primary" href="#install">Get started — free</a>
@@ -104,28 +104,28 @@
     <div class="card reveal"><div class="ico">🔒</div><b>Private by design</b>
       <p>Video is processed on your machine and never uploaded. The identity database stays yours — stored locally, removable anytime.</p></div>
     <div class="card reveal"><div class="ico">🎮</div><b>Bring your own compute</b>
-      <p>Auto-detects your NVIDIA GPU (CUDA) or falls back to CPU. One wizard command maps your cameras and tunes FPS to your hardware.</p></div>
+      <p>Auto-detects your NVIDIA GPU or falls back to CPU. One wizard command maps your cameras and tunes FPS to your hardware.</p></div>
     <div class="card reveal"><div class="ico">🖥️</div><b>Live operator console</b>
-      <p>A browser dashboard with real-time video grid, verified-identity event feed, and predictions of where a person is heading next.</p></div>
+      <p>A browser dashboard with real-time video grid, verified-identity event feed, and the live trajectory of every person on your site.</p></div>
     <div class="card reveal"><div class="ico">🎥</div><b>Any camera</b>
       <p>RTSP / ONVIF IP cams, USB webcams, even recorded footage for demos. Auto-reconnect and hot-plug built in.</p></div>
-    <div class="card reveal"><div class="ico">🧠</div><b>Serious AI stack</b>
-      <p>Custom YOLO26n-face detector + ArcFace embeddings + FAISS search — landmark-aligned for production-grade accuracy.</p></div>
-    <div class="card reveal"><div class="ico">🔮</div><b>Predictive tracking</b>
-      <p>A Markov model learns how people move through YOUR site and predicts the next camera with an ETA.</p></div>
+    <div class="card reveal"><div class="ico">📸</div><b>New faces, zero effort</b>
+      <p>Growing your identity library is as simple as adding photos to your image set. New people are picked up automatically and tracked across every camera — no retraining, no rebuilds, no AI expertise needed.</p></div>
+    <div class="card reveal"><div class="ico">🧭</div><b>Trajectory tracking</b>
+      <p>A Markov model learns how people move through YOUR site and follows their path camera-to-camera — see where someone is heading and when they'll get there.</p></div>
   </div>
 </div></section>
 
 <section id="architecture"><div class="wrap">
   <h2>Architecture</h2>
-  <h3 class="sub">Three modules, two frozen contracts, one command</h3>
+  <h3 class="sub">Three modules, one pipeline, one command</h3>
   <div class="arch">
     <div class="archflow">
       <div class="box"><span class="n">1</span><div><b>TIER 1 · INGEST</b>
         <p>Camera gateway.<br>RTSP · USB · files.<br>Reconnect &amp; hot-plug.</p></div></div>
       <div class="arrow">➜</div>
       <div class="box"><span class="n">2</span><div><b>TIER 2 · AI CORE</b>
-        <p>Detect → track → identify.<br>ArcFace + FAISS.<br>Predict next camera + ETA.</p></div></div>
+        <p>Detect → track → identify.<br>ArcFace + FAISS.<br>Markov trajectories: next camera + ETA.</p></div></div>
       <div class="arrow">➜</div>
       <div class="box"><span class="n">3</span><div><b>TIER 3 · CONSOLE</b>
         <p>Live grid &amp; event feed in your browser. Enroll identities in one click.</p></div></div>

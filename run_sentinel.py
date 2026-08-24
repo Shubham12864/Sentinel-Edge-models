@@ -75,12 +75,19 @@ def main() -> None:
     if not args.no_ai:
         from src.pipeline import UnifiedPipeline
         weights = T2 / "models" / "yolo26n" / "yolo26 widerdataset.pt"
-        hq.IDENTITY_STORE.export_index()   # ensure an index file exists before startup
-        pipeline = UnifiedPipeline.create_default(
-            weights_path=weights if weights.exists() else None,
-            identity_index_path=hq.EXPORTED_INDEX,   # always watch, even if just-created
-            crop_dir=T2 / "data" / "face_crops",
-            transition_graph_path=T2 / "data" / "transition_graph.json")
+        try:
+            if not weights.exists():
+                from sentinel.weights import ensure_yolo_weights
+                weights = ensure_yolo_weights(quiet=False)   # auto-download from HF hub
+            hq.IDENTITY_STORE.export_index()   # ensure an index file exists before startup
+            pipeline = UnifiedPipeline.create_default(
+                weights_path=weights,
+                identity_index_path=hq.EXPORTED_INDEX,   # always watch, even if just-created
+                crop_dir=T2 / "data" / "face_crops",
+                transition_graph_path=T2 / "data" / "transition_graph.json")
+        except Exception as exc:
+            print(f"[tier2] AI unavailable ({type(exc).__name__}: {exc}) -> console-only mode")
+            pipeline = None
         from src.runtime.frame_runtime import Tier2Runtime
         runtime = Tier2Runtime(pipeline, event_sink=hub.publish_event, max_workers=8)
         print(f"[tier2] pipeline ready (device plan: {getattr(pipeline, 'embedder', None) and 'lazy-loaded on first frame'})")
