@@ -37,26 +37,54 @@ detect every frame   ArcFace + FAISS   Markov graph    live operator
 git clone https://github.com/Shubham12864/Sentinel-Edge-models.git
 cd Sentinel-Edge-models
 
-# 2 · install (Python 3.10+)
-python -m pip install -r tier2-ai/requirements.txt
+# 2 · install the packaged application (Python 3.10+)
+python -m pip install -e .
 
-# 3 · run the whole grid
-python run_sentinel.py
+# 3 · optional: install local AI inference dependencies
+python -m pip install -e ".[ai]"
+
+# 4 · detect hardware and write the initial camera registry
+sentinel setup
+
+# 5 · start the grid and open the operator console
+sentinel up
 # → console opens at http://127.0.0.1:8000
 ```
 
 Useful variants:
 
 ```bash
-python run_sentinel.py --no-ai                         # ingest + console only
-python run_sentinel.py --file clip.mp4 --camera-id CAM_99  # demo with a video file
+sentinel doctor                                      # dependency, hardware, model, and camera check
+sentinel up --no-ai                                  # ingest + console only
+sentinel up --file clip.mp4 --camera-id CAM_99       # connect a recorded file immediately
+python run_sentinel.py --host 0.0.0.0 --port 8080    # run without the CLI wrapper
 ```
 
 ### First 3 minutes
 
-1. **Cameras** tab → *Save to mapping* (`CAM_03`, an RTSP URL / webcam index / any `.mp4`) → press **Connect**
-2. **Identities** tab → drop 2–6 clear face photos → name → **Enroll** *(recognition updates without a restart)*
-3. **Live** tab → watch verified identities, event feed, and predictions
+1. Run `sentinel setup`, or open **Cameras** and save a camera mapping (`CAM_03`, an RTSP URL, webcam index, or `.mp4`).
+2. Press **Connect** for each saved camera. Saving a mapping does not start capture.
+3. Open **Identities**, drop 1–12 clear face photos, enter a name, and press **Enroll**. The gallery hot-reloads without a restart.
+4. Use **Live** to view connected cameras, the tracking board, verified identities, events, and predictions.
+
+### Installing from a wheel
+
+Build and install the distributable package when using Sentinel Edge outside a checkout:
+
+```bash
+python -m pip install build
+python -m build
+python -m pip install dist/sentinel_edge-*.whl
+sentinel setup
+sentinel up
+```
+
+The `onvif` extra enables ONVIF discovery support. The `gpu` extra uses GPU-capable ONNX Runtime; use `all` to install both AI and ONVIF extras:
+
+```bash
+python -m pip install -e ".[gpu]"
+python -m pip install -e ".[all]"
+```
 
 ---
 
@@ -69,7 +97,7 @@ python run_sentinel.py --file clip.mp4 --camera-id CAM_99  # demo with a video f
 └──────────────────────────────┬──────────────────────────────────────┘
                                ▼  FramePacket {camera_id, timestamp, frame, metadata}
 ┌────────────────────────── TIER 2 · AI CORE ─────────────────────────┐
-│  quality gate → YOLO26n-Face → ByteTrack → ArcFace(buffalo_l)       │
+│  quality gate → YOLO26n-face + ByteTrack → ArcFace(buffalo_l)       │
 │  → FAISS identity search → verifier (hysteresis+margin)             │
 │  → Markov transition predictor (persisted, Laplace-smoothed)        │
 │  per-camera workers · bounded thread pool · gallery hot-reload      │
@@ -100,6 +128,8 @@ python run_sentinel.py --file clip.mp4 --camera-id CAM_99  # demo with a video f
 └── tier3-hq/                  # FastAPI server, console, and tests
 ```
 
+The packaged launcher keeps the same layout under `sentinel/_app/`, so the `sentinel` command works after wheel installation as well as from a repository checkout.
+
 ---
 
 ## 🧪 Testing & Verification
@@ -126,12 +156,32 @@ GPU is recommended for multi-camera live deployment. CPU is suitable for single-
 |---|---|---|
 | Camera mapping | `tier1-ingest/cameras.yaml` | managed by Command HQ; saved cameras are not auto-connected |
 | Tier-2 allowlist | `tier2-ai/config/cameras.yaml` | defense-in-depth camera ID validation |
-| Detector weights | `tier2-ai/models/yolo26n/yolo26 widerdataset.pt` | supplied YOLO model location |
+| Detector weights | `tier2-ai/models/yolo26n/` | local `.pt` file, or auto-downloaded from [YOLO26n-face](https://huggingface.co/Shubham12864/YOLO26n-face) |
 | Verification threshold | `MatchVerifier(threshold=…)` | calibrate with `scripts/calibrate_threshold.py` |
+
+Camera sources accept RTSP/HTTP URLs, numeric device indices, and recorded media paths. Camera IDs may contain letters, numbers, `_`, `.`, and `-` (maximum 64 characters). Runtime-added cameras are synchronized with the Tier-2 allowlist.
 
 > **Biometrics stay local.** Face crops, uploaded enrollment images, identity vectors, and FAISS galleries are git-ignored and never leave the machine through this application.
 
 ---
+
+## 🔌 HTTP and WebSocket surface
+
+Tier 3 serves the browser console and exposes the following integration points:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/stats` | health, counters, identities, and runtime metrics |
+| `GET /api/events` | recent unified events |
+| `WS /ws/events` | live event stream with a recent backlog |
+| `GET /api/tracks` | currently active per-camera tracks |
+| `GET /api/cameras` | saved mappings and connection state |
+| `POST /api/cameras/save` | validate and save a camera mapping |
+| `POST /api/cameras/{id}/connect` | explicitly start a saved source |
+| `POST /api/cameras/{id}/disconnect` | stop capture while preserving mapping |
+| `DELETE /api/cameras/{id}` | disconnect and remove a mapping |
+| `POST /api/identities/upload` | quality-gated identity enrollment |
+| `GET /api/identities/{id}/avatar` | first enrollment photo thumbnail |
 
 ## 🗺 Roadmap
 
@@ -154,73 +204,24 @@ Built as three independent tracks around two frozen contracts:
 | **3 · Orchestration & HQ** | event hub, console, and operator tooling |
 
 
-```bash
-cd tier2-ai
-python scripts/enroll_identities.py
-```
+## 🧰 Developer workflows
 
-This builds the FAISS identity index from the folder images.
-
-## Real pipeline flow
-
-```text
-Camera / Source
-    ↓
-Tier 1: FramePacket creation
-    ↓
-Tier 2: Face detection + tracking + embedding + FAISS match
-    ↓
-Tier 3: Event receiver / alert dashboard / downstream app
-```
-
-## Main project details
-
-The model code is under:
-
-- [tier2-ai/src](tier2-ai/src)
-- [tier2-ai/scripts](tier2-ai/scripts)
-- [tier2-ai/tests](tier2-ai/tests)
-
-The main processing entry point is:
-
-- `UnifiedPipeline.process_frame_packet(...)`
-
-This is the place where a frame becomes an AI event.
-
-## Requirements
-
-The project dependencies are listed in:
-
-- [tier2-ai/requirements.txt](tier2-ai/requirements.txt)
-
-Install them with:
+Run the focused regression suite from the repository root:
 
 ```bash
-cd tier2-ai
-pip install -r requirements.txt
+pytest tier1-ingest/test_camera_source.py tier3-hq/test_server.py tier2-ai/tests/ -q
 ```
 
-## Model files
+For offline enrollment or threshold calibration, use the scripts in [tier2-ai/scripts](tier2-ai/scripts):
 
-The YOLO weights are expected in:
-
-```text
-tier2-ai/models/yolo26n/yolo26 widerdataset.pt
+```bash
+python tier2-ai/scripts/enroll_identities.py
+python tier2-ai/scripts/calibrate_threshold.py
 ```
 
-## Practical use
-
-This is suitable for:
-
-- local testing
-- model validation
-- edge AI experiments
-- future cloud deployment
-- building upstream and downstream integrations
-
-It is not a complete final product by itself.
+The main Tier-2 processing entry point is `UnifiedPipeline.process_frame_packet(...)`; it consumes a `FramePacket` and produces a `UnifiedEvent` for Tier 3.
 
 ## License
 
-This project is shared for learning and model experimentation. Add your own license if you plan to publish it publicly.
+MIT. See the project metadata in `pyproject.toml`.
 
