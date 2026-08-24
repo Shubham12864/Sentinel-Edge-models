@@ -138,6 +138,10 @@ class CameraSource(threading.Thread):
 
 def _open_capture(source: Any):
     import cv2
+    # webcam indices often arrive as strings ("0" from YAML/JSON forms);
+    # cv2.VideoCapture("0") silently fails on Windows -- coerce to int.
+    if isinstance(source, str) and source.isdigit():
+        source = int(source)
     capture = cv2.VideoCapture(source)
     if _kind_of(source) == "file":
         capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
