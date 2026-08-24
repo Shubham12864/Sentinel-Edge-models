@@ -369,7 +369,11 @@ def _register(cid: str, source: str, fps: float, location: str) -> None:
 async def save_camera(body: dict[str, Any]):
     """Add/update a camera in the mapping WITHOUT connecting it."""
     cid, source = str(body.get("camera_id", "")).strip(), body.get("source", "")
-    fps = float(body.get("fps", 4.0))
+    raw_fps = body.get("fps", 4.0)
+    try:
+        fps = float(raw_fps)
+    except (TypeError, ValueError):
+        raise HTTPException(422, f"fps must be a number, got {raw_fps!r}")
     location = str(body.get("location", ""))[:120]
     if not CAMERA_ID_RE.fullmatch(cid):
         raise HTTPException(422, f"invalid camera_id {cid!r} (allowed: A-Z a-z 0-9 _ . - , max 64)")
@@ -383,6 +387,15 @@ async def save_camera(body: dict[str, Any]):
     saved = _load_registry()
     saved[cid] = {"source": str(source), "fps": fps, "location": location}
     _save_registry(saved)
+    # keep the running Tier-2 allowlist in sync so runtime-added cams are accepted
+    if HUB.pipeline is not None:
+        try:
+            al = getattr(HUB.pipeline, "camera_allowlist", None)
+            if isinstance(al, set):
+                with HUB.pipeline._lock:
+                    al.add(cid)
+        except Exception:
+            pass
     return {"ok": True, "camera_id": cid, "state": "saved"}
 
 
@@ -519,6 +532,8 @@ async def upload_identities(files: list[UploadFile] = File(...), name: str = For
             skipped_note = f"{f.filename}: >10MB rejected"
             continue
         arr = np.frombuffer(raw, dtype=np.uint8)
+        if arr.size == 0:
+            continue
         image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
         if image is None:
             continue

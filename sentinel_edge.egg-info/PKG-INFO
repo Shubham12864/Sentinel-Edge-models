@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sentinel-edge
-Version: 1.0.0
+Version: 1.0.1
 Summary: Sentinel Edge - edge-native multi-camera AI surveillance grid (BYOC: your machine, your GPU)
 Author: Shubham
 License: MIT

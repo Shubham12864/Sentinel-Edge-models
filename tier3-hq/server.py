@@ -387,6 +387,15 @@ async def save_camera(body: dict[str, Any]):
     saved = _load_registry()
     saved[cid] = {"source": str(source), "fps": fps, "location": location}
     _save_registry(saved)
+    # keep the running Tier-2 allowlist in sync so runtime-added cams are accepted
+    if HUB.pipeline is not None:
+        try:
+            al = getattr(HUB.pipeline, "camera_allowlist", None)
+            if isinstance(al, set):
+                with HUB.pipeline._lock:
+                    al.add(cid)
+        except Exception:
+            pass
     return {"ok": True, "camera_id": cid, "state": "saved"}
 
 

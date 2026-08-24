@@ -39,3 +39,6 @@ tier2-ai/data/test_crops/
 
 # recorded demo footage stays local (too heavy for git)
 runs/
+
+build/
+dist/

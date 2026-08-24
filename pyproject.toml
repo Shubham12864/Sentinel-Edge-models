@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sentinel-edge"
-version = "1.0.0"
+version = "1.0.1"
 description = "Sentinel Edge - edge-native multi-camera AI surveillance grid (BYOC: your machine, your GPU)"
 readme = "README.md"
 requires-python = ">=3.10"

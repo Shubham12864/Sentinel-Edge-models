@@ -55,7 +55,7 @@ class UnifiedPipeline:
         self.crop_dir = Path(crop_dir) if crop_dir else Path(__file__).resolve().parents[1] / "data" / "face_crops"
         self.track_ttl_seconds, self.event_interval_seconds = track_ttl_seconds, event_interval_seconds
         self.crop_improvement_ratio, self.transition_window_seconds = crop_improvement_ratio, transition_window_seconds
-        self.camera_allowlist = frozenset(camera_allowlist) if camera_allowlist else None
+        self.camera_allowlist = set(camera_allowlist) if camera_allowlist else None
         self.transition_graph_path = (
             Path(transition_graph_path) if transition_graph_path is not None
             else Path(__file__).resolve().parents[1] / "data" / "transition_graph.json")

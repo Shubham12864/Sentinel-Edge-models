@@ -1,13 +1,4 @@
-# Camera allowlist for Sentinel Edge Tier 2.
-#
-# When this file defines a non-empty top-level `cameras:` key, the pipeline
-# (UnifiedPipeline.create_default) accepts FramePackets ONLY for the ids
-# listed here; anything else is rejected into metrics.rejected_packets.
-# Delete or empty the `cameras:` section to disable allowlist filtering.
-#
-# camera_id rules everywhere: ^[A-Za-z0-9_.\-]{1,64}$
-
-cameras:
-  LAPTOP_CAM: {location: "demo laptop",   status: active}
-  CAM_01:     {location: "main gate",     status: active}
-  CAM_02:     {location: "corridor cam",  status: active}
+# Tier 2 allowlist. Empty/absent 'cameras:' = accept any valid camera_id.
+# Pin your fleet here for defense-in-depth, e.g.:
+# cameras:
+#   CAM_01: {location: front gate}
